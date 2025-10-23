@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NBA JAM</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1 class="title">NBA JAM</h1>
+            <p class="subtitle">2024-25 Season Predictions Tracker</p>
+            <div class="last-updated" id="lastUpdated"></div>
+        </header>
+
+        <!-- Main Scoreboard -->
+        <section class="scoreboard">
+            <h2>LEADERBOARD</h2>
+            <div class="score-cards" id="scoreCards">
+                <!-- Player scores will be dynamically inserted here -->
+            </div>
+        </section>
+
+        <!-- Conference Breakdown -->
+        <section class="conference-breakdown">
+            <div class="conference-tabs">
+                <button class="tab-button active" onclick="showTab('combined')">Combined</button>
+                <button class="tab-button" onclick="showTab('eastern')">Eastern Conference</button>
+                <button class="tab-button" onclick="showTab('western')">Western Conference</button>
+            </div>
+            
+            <div class="tab-content" id="combinedTab">
+                <!-- Combined standings comparison will go here -->
+            </div>
+            
+            <div class="tab-content" id="easternTab" style="display: none;">
+                <!-- Eastern Conference comparison will go here -->
+            </div>
+            
+            <div class="tab-content" id="westernTab" style="display: none;">
+                <!-- Western Conference comparison will go here -->
+            </div>
+        </section>
+
+        <!-- Loading and Error States -->
+        <div class="loader" id="loader">Loading NBA standings...</div>
+        <div class="error-message" id="errorMessage"></div>
+    </div>
+
+    <script src="predictions.js"></script>
+    <script src="team-logos.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

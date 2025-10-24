@@ -192,7 +192,7 @@ header {
 
 .table-header {
     display: grid;
-    grid-template-columns: 60px 200px repeat(4, 1fr);
+    grid-template-columns: 60px 200px repeat(3, 1fr);
     padding: 15px;
     background: rgba(0,0,0,0.5);
     font-weight: bold;
@@ -203,7 +203,7 @@ header {
 
 .team-row {
     display: grid;
-    grid-template-columns: 60px 200px repeat(4, 1fr);
+    grid-template-columns: 60px 200px repeat(3, 1fr);
     padding: 12px 15px;
     border-bottom: 1px solid rgba(255,255,255,0.1);
     align-items: center;
@@ -322,7 +322,7 @@ header {
     
     .table-header,
     .team-row {
-        grid-template-columns: 40px 150px repeat(4, 1fr);
+        grid-template-columns: 40px 150px repeat(3, 1fr);
         font-size: 12px;
     }
     
@@ -335,7 +335,7 @@ header {
 @media (max-width: 480px) {
     .table-header,
     .team-row {
-        grid-template-columns: 30px 100px repeat(4, 50px);
+        grid-template-columns: 30px 100px repeat(3, 60px);
         font-size: 11px;
         padding: 8px;
     }

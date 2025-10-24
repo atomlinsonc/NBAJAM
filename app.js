@@ -126,7 +126,35 @@ function setupEventListeners() {
     document.getElementById('manualUpdate').addEventListener('click', () => {
         document.getElementById('updateModal').style.display = 'block';
         prefillManualInput();
-    });
+    
+    // Settings button
+    const openSettingsBtn = document.getElementById('openSettings');
+    if (openSettingsBtn) {
+        openSettingsBtn.addEventListener('click', () => {
+            const key = localStorage.getItem('balldontlieApiKey') || '';
+            const modal = document.getElementById('settingsModal');
+            const input = document.getElementById('bdlKey');
+            if (input) input.value = key;
+            if (modal) modal.style.display = 'block';
+        });
+    }
+    // Settings modal close buttons (reuse generic close handler) and save
+    const saveSettingsBtn = document.getElementById('saveSettings');
+    if (saveSettingsBtn) {
+        saveSettingsBtn.addEventListener('click', () => {
+            const input = document.getElementById('bdlKey');
+            const val = (input?.value || '').trim();
+            if (val) {
+                localStorage.setItem('balldontlieApiKey', val);
+            } else {
+                localStorage.removeItem('balldontlieApiKey');
+            }
+            const modal = document.getElementById('settingsModal');
+            if (modal) modal.style.display = 'none';
+        });
+    }
+    
+});
     
     // ESPN paste button
     document.getElementById('loadFromUrl').addEventListener('click', () => {
@@ -155,6 +183,7 @@ function setupEventListeners() {
 }
 
 // Fetch standings using multiple methods
+
 async function fetchStandings() {
     const loader = document.getElementById('loader');
     const errorMessage = document.getElementById('errorMessage');
@@ -163,23 +192,18 @@ async function fetchStandings() {
     errorMessage.classList.remove('active');
     
     try {
-        // Try method 1: ESPN API via CORS proxy
-        await fetchFromESPN();
-    } catch (error) {
-        console.error('ESPN fetch failed:', error);
-        
-        // Try method 2: Basketball Reference
+        // 1) Try NBA public JSON (keyless)
+        await fetchFromNbaJson();
+    } catch (err1) {
+        console.warn('NBA JSON fetch failed:', err1);
         try {
-            await fetchFromBasketballRef();
-        } catch (error2) {
-            console.error('Basketball Reference fetch failed:', error2);
-            
-            // Show error and suggest manual update
-            errorMessage.innerHTML = `
-                Failed to auto-fetch standings. Please use one of these options:<br>
-                1. Click "Manual Update" to enter standings manually<br>
-                2. Click "Paste ESPN Standings" and copy from ESPN.com
-            `;
+            // 2) Try balldontlie standings (requires API key stored in localStorage)
+            await fetchFromBalldontlie();
+        } catch (err2) {
+            console.warn('balldontlie fetch failed:', err2);
+            // 3) Fall back to manual input modal
+            document.getElementById('updateModal').style.display = 'block';
+            errorMessage.textContent = 'Auto-fetch failed. You can paste or type standings manually.';
             errorMessage.classList.add('active');
         }
     } finally {
@@ -187,24 +211,9 @@ async function fetchStandings() {
     }
 }
 
+
 // Fetch from ESPN using CORS proxy
-async function fetchFromESPN() {
-    const proxyUrl = 'https://corsproxy.io/?';
-    const espnUrl = 'https://site.api.espn.com/apis/v2/sports/basketball/nba/standings';
-    
-    const response = await fetch(proxyUrl + encodeURIComponent(espnUrl));
-    if (!response.ok) throw new Error('Failed to fetch from ESPN');
-    
-    const data = await response.json();
-    
-    if (data && data.children) {
-        parseESPNData(data);
-        calculateScores();
-        updateUI();
-        saveToLocalStorage();
-    } else {
-        throw new Error('Invalid ESPN data format');
-    }
+// fetchFromESPN removed (replaced by fetchFromNbaJson)
 }
 
 // Parse ESPN API data
@@ -251,10 +260,7 @@ function parseESPNData(data) {
 }
 
 // Fetch from Basketball Reference
-async function fetchFromBasketballRef() {
-    // This is a fallback method - would need CORS proxy
-    throw new Error('Basketball Reference not available');
-}
+// fetchFromBasketballRef removed (replaced by NBA/BDL flow)
 
 // Normalize team names
 function normalizeTeamName(name) {
@@ -743,4 +749,180 @@ function updateLastUpdated() {
 function saveToLocalStorage() {
     localStorage.setItem('nbaStandings', JSON.stringify(currentStandings));
     localStorage.setItem('nbaStandingsDate', new Date().toISOString());
+}
+
+
+// Normalize team names against our mappings
+function normalizeTeamName(name) {
+    if (!name) return null;
+    // Team name mappings defined in team-logos.js as teamNameMappings
+    if (typeof teamNameMappings !== 'undefined' && teamNameMappings[name]) {
+        return teamNameMappings[name];
+    }
+    // Try title-case edge trims
+    return name.trim();
+}
+
+// Attempt NBA JSON endpoints (no key)
+async function fetchFromNbaJson() {
+    const candidateUrls = [];
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth()+1).padStart(2,'0');
+    const d = String(today.getDate()).padStart(2,'0');
+    const ymd = `${y}${m}${d}`;
+
+    // Commonly-seen endpoints (undocumented; may change)
+    candidateUrls.push(`https://data.nba.net/data/10s/prod/v1/current/standings_conference.json`);
+    candidateUrls.push(`https://data.nba.net/data/10s/prod/v1/${ymd}/standings_conference.json`);
+    candidateUrls.push(`https://data.nba.net/data/10s/prod/v1/current/standings_all.json`);
+
+    let lastErr;
+    for (const url of candidateUrls) {
+        try {
+            const res = await fetch(url, { cache: 'no-store' });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            const parsed = parseNbaJsonStandings(data);
+            if (parsed && parsed.eastern?.length && parsed.western?.length) {
+                currentStandings = parsed;
+                calculateScores();
+                updateUI();
+                saveToLocalStorage();
+                return;
+            }
+        } catch (e) {
+            lastErr = e;
+            continue;
+        }
+    }
+    throw lastErr || new Error('No NBA JSON endpoint succeeded');
+}
+
+// Parse a variety of NBA JSON shapes into { eastern:[], western:[] }
+function parseNbaJsonStandings(data) {
+    const out = { eastern: [], western: [] };
+    // Helper to push a team record
+    const pushTeam = (confKey, t, idx) => {
+        if (!t) return;
+        const fullName = normalizeTeamName(
+            t.team?.fullName || t.team?.name || t.teamSitesOnly?.teamName || t.teamSitesOnly?.teamNickname || t.teamName || t.name || t.full_name
+        );
+        if (!fullName) return;
+        const wins = Number(t.win) || Number(t.wins) || Number(t.w) || 0;
+        const losses = Number(t.loss) || Number(t.losses) || Number(t.l) || 0;
+        const winPct = wins + losses > 0 ? wins / (wins + losses) : 0;
+        out[confKey].push({
+            rank: (idx ?? out[confKey].length) + 1,
+            team: fullName,
+            wins,
+            losses,
+            winPct
+        });
+    };
+
+    // Shape 1: data.league.standard.conference.east/west
+    try {
+        const east = data?.league?.standard?.conference?.east;
+        const west = data?.league?.standard?.conference?.west;
+        if (Array.isArray(east) && Array.isArray(west)) {
+            east
+              .sort((a,b) => (Number(b.winPct||b.winPctV2||0) - Number(a.winPct||a.winPctV2||0)) || (Number(b.win||b.wins||0)-Number(a.win||a.wins||0)))
+              .forEach((t,i)=>pushTeam('eastern', t, i));
+            west
+              .sort((a,b) => (Number(b.winPct||b.winPctV2||0) - Number(a.winPct||a.winPctV2||0)) || (Number(b.win||b.wins||0)-Number(a.win||a.wins||0)))
+              .forEach((t,i)=>pushTeam('western', t, i));
+        }
+    } catch {}
+    if (out.eastern.length && out.western.length) return out;
+
+    // Shape 2: data.league.standard.teams with confName field
+    try {
+        const teams = data?.league?.standard?.teams;
+        if (Array.isArray(teams)) {
+            const east = [], west = [];
+            teams.forEach(t => {
+                const conf = (t?.confName || t?.team?.conference || '').toLowerCase();
+                if (conf.startsWith('e')) east.push(t);
+                else if (conf.startsWith('w')) west.push(t);
+            });
+            const sortByRecord = (arr) => arr.sort((a,b) => {
+                const aw = Number(a.win||a.wins||0), al = Number(a.loss||a.losses||0);
+                const bw = Number(b.win||b.wins||0), bl = Number(b.loss||b.losses||0);
+                const ap = aw+al>0 ? aw/(aw+al):0;
+                const bp = bw+bl>0 ? bw/(bw+bl):0;
+                return bp-ap || bw-aw;
+            });
+            sortByRecord(east).forEach((t,i)=>pushTeam('eastern', t, i));
+            sortByRecord(west).forEach((t,i)=>pushTeam('western', t, i));
+        }
+    } catch {}
+    if (out.eastern.length && out.western.length) return out;
+
+    return null;
+}
+
+// balldontlie fallback (requires API key in localStorage under 'balldontlieApiKey')
+async function fetchFromBalldontlie() {
+    const apiKey = localStorage.getItem('balldontlieApiKey');
+    if (!apiKey) {
+        // Prompt user to add key
+        const err = new Error('Missing balldontlie API key');
+        showSettingsModal();
+        throw err;
+    }
+    const season = computeSeasonYear(); // e.g., 2025 for 2025-26 season starting Oct 2025
+    const url = `https://api.balldontlie.io/v1/standings?season=${season}`;
+    const res = await fetch(url, {
+        headers: { 'Authorization': apiKey },
+        cache: 'no-store'
+    });
+    if (!res.ok) throw new Error(`balldontlie HTTP ${res.status}`);
+    const data = await res.json();
+    const parsed = parseBalldontlieStandings(data);
+    if (!parsed) throw new Error('Unexpected balldontlie data');
+    currentStandings = parsed;
+    calculateScores();
+    updateUI();
+    saveToLocalStorage();
+}
+
+// Compute the NBA season year given today's date (season named by the year it starts)
+function computeSeasonYear() {
+    const now = new Date();
+    const month = now.getMonth()+1; // 1..12
+    const year = now.getFullYear();
+    // Season typically starts in Oct; if before October, use previous year
+    return (month >= 10) ? year : (year - 1);
+}
+
+function parseBalldontlieStandings(payload) {
+    const out = { eastern: [], western: [] };
+    const rows = payload?.data || payload;
+    if (!Array.isArray(rows)) return null;
+    const east = rows.filter(r => (r.team?.conference || r.conference || '').toLowerCase().startsWith('e'));
+    const west = rows.filter(r => (r.team?.conference || r.conference || '').toLowerCase().startsWith('w'));
+    const mapRow = (r, i) => {
+        const fullName = normalizeTeamName(r.team?.full_name || r.team?.fullName || r.team?.name);
+        const wins = Number(r.wins || r.win || 0);
+        const losses = Number(r.losses || r.loss || 0);
+        const winPct = wins+losses>0 ? wins/(wins+losses) : 0;
+        const rank = Number(r.conference_rank || r.rank || i+1);
+        return { rank, team: fullName, wins, losses, winPct };
+    };
+    east.sort((a,b)=>(Number(a.conference_rank||999)-(Number(b.conference_rank||999))))
+        .forEach((r,i)=>out.eastern.push(mapRow(r,i)));
+    west.sort((a,b)=>(Number(a.conference_rank||999)-(Number(b.conference_rank||999))))
+        .forEach((r,i)=>out.western.push(mapRow(r,i)));
+    // If ranks missing, sort by winPct then wins
+    const fixSort = (arr) => arr.sort((a,b)=> (b.winPct-a.winPct)|| (b.wins-a.wins));
+    if (out.eastern.some(t=>!t.rank)) { out.eastern = fixSort(out.eastern).map((t,i)=>({...t, rank:i+1})); }
+    if (out.western.some(t=>!t.rank)) { out.western = fixSort(out.western).map((t,i)=>({...t, rank:i+1})); }
+    return (out.eastern.length && out.western.length) ? out : null;
+}
+
+// Settings modal helpers for API key
+function showSettingsModal() {
+    const modal = document.getElementById('settingsModal');
+    if (modal) modal.style.display = 'block';
 }

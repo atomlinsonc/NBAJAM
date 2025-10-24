@@ -15,6 +15,13 @@
             <div class="last-updated" id="lastUpdated"></div>
         </header>
 
+        <!-- Update Controls -->
+        <section class="update-controls">
+            <button id="fetchStandings" class="btn btn-primary">Auto-Fetch Standings</button>
+            <button id="manualUpdate" class="btn btn-secondary">Manual Update</button>
+            <button id="loadFromUrl" class="btn btn-secondary">Paste ESPN Standings</button>
+        </section>
+
         <!-- Main Scoreboard -->
         <section class="scoreboard">
             <h2>LEADERBOARD</h2>
@@ -23,26 +30,86 @@
             </div>
         </section>
 
-        <!-- Conference Breakdown -->
-        <section class="conference-breakdown">
-            <div class="conference-tabs">
-                <button class="tab-button active" onclick="showTab('combined')">Combined</button>
-                <button class="tab-button" onclick="showTab('eastern')">Eastern Conference</button>
-                <button class="tab-button" onclick="showTab('western')">Western Conference</button>
-            </div>
+        <!-- Current NBA Standings with Predictions -->
+        <section class="standings-section">
+            <h2>CURRENT NBA STANDINGS & PREDICTIONS</h2>
             
-            <div class="tab-content" id="combinedTab">
-                <!-- Combined standings comparison will go here -->
+            <!-- Eastern Conference -->
+            <div class="conference-standings">
+                <h3 class="conference-title">EASTERN CONFERENCE</h3>
+                <div class="standings-table">
+                    <div class="table-header">
+                        <div class="rank-col">#</div>
+                        <div class="team-col">Team</div>
+                        <div class="record-col">Record</div>
+                        <div class="prediction-col">Aaron</div>
+                        <div class="prediction-col">Austin</div>
+                        <div class="prediction-col">Paul</div>
+                    </div>
+                    <div id="easternStandings" class="standings-body">
+                        <!-- Eastern teams will be inserted here -->
+                    </div>
+                </div>
             </div>
-            
-            <div class="tab-content" id="easternTab" style="display: none;">
-                <!-- Eastern Conference comparison will go here -->
-            </div>
-            
-            <div class="tab-content" id="westernTab" style="display: none;">
-                <!-- Western Conference comparison will go here -->
+
+            <!-- Western Conference -->
+            <div class="conference-standings">
+                <h3 class="conference-title">WESTERN CONFERENCE</h3>
+                <div class="standings-table">
+                    <div class="table-header">
+                        <div class="rank-col">#</div>
+                        <div class="team-col">Team</div>
+                        <div class="record-col">Record</div>
+                        <div class="prediction-col">Aaron</div>
+                        <div class="prediction-col">Austin</div>
+                        <div class="prediction-col">Paul</div>
+                    </div>
+                    <div id="westernStandings" class="standings-body">
+                        <!-- Western teams will be inserted here -->
+                    </div>
+                </div>
             </div>
         </section>
+
+        <!-- Manual Update Modal -->
+        <div id="updateModal" class="modal">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h2>Manual Standings Update</h2>
+                <p>Enter team names in order from 1st to 15th (optionally include record)</p>
+                
+                <div class="manual-input-container">
+                    <div class="conference-input">
+                        <h3>Eastern Conference</h3>
+                        <textarea id="easternInput" rows="15" placeholder="Cleveland Cavaliers
+Boston Celtics
+New York Knicks
+..."></textarea>
+                    </div>
+                    <div class="conference-input">
+                        <h3>Western Conference</h3>
+                        <textarea id="westernInput" rows="15" placeholder="Oklahoma City Thunder
+Houston Rockets
+Golden State Warriors
+..."></textarea>
+                    </div>
+                </div>
+                <button id="saveStandings" class="btn btn-primary">Save Standings</button>
+            </div>
+        </div>
+
+        <!-- ESPN URL Input Modal -->
+        <div id="urlModal" class="modal">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h2>Load from ESPN Standings</h2>
+                <p>1. Go to <a href="https://www.espn.com/nba/standings" target="_blank">ESPN NBA Standings</a></p>
+                <p>2. Copy all the standings text</p>
+                <p>3. Paste below:</p>
+                <textarea id="espnInput" rows="20" placeholder="Paste ESPN standings here..."></textarea>
+                <button id="parseEspn" class="btn btn-primary">Parse Standings</button>
+            </div>
+        </div>
 
         <!-- Loading and Error States -->
         <div class="loader" id="loader">Loading NBA standings...</div>

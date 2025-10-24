@@ -1,43 +1,91 @@
 // NBA JAM - Main Application
-// Uses NBA's official CDN data for reliable standings
+// Supports manual standings input and ESPN copy/paste
 
-// NBA Team ID mappings
-const nbaTeamIds = {
+// State
+let currentStandings = {
+    eastern: [],
+    western: []
+};
+let playerScores = {};
+
+// Team name variations for matching
+const teamVariations = {
     // Eastern Conference
-    "1610612737": "Atlanta Hawks",
-    "1610612738": "Boston Celtics",
-    "1610612751": "Brooklyn Nets",
-    "1610612766": "Charlotte Hornets",
-    "1610612741": "Chicago Bulls",
-    "1610612739": "Cleveland Cavaliers",
-    "1610612765": "Detroit Pistons",
-    "1610612754": "Indiana Pacers",
-    "1610612748": "Miami Heat",
-    "1610612749": "Milwaukee Bucks",
-    "1610612752": "New York Knicks",
-    "1610612753": "Orlando Magic",
-    "1610612755": "Philadelphia 76ers",
-    "1610612761": "Toronto Raptors",
-    "1610612764": "Washington Wizards",
+    "Cavaliers": "Cleveland Cavaliers",
+    "Cavs": "Cleveland Cavaliers",
+    "Cleveland": "Cleveland Cavaliers",
+    "Celtics": "Boston Celtics",
+    "Boston": "Boston Celtics",
+    "Knicks": "New York Knicks",
+    "New York": "New York Knicks",
+    "NY": "New York Knicks",
+    "Magic": "Orlando Magic",
+    "Orlando": "Orlando Magic",
+    "Hawks": "Atlanta Hawks",
+    "Atlanta": "Atlanta Hawks",
+    "Bucks": "Milwaukee Bucks",
+    "Milwaukee": "Milwaukee Bucks",
+    "Pistons": "Detroit Pistons",
+    "Detroit": "Detroit Pistons",
+    "Heat": "Miami Heat",
+    "Miami": "Miami Heat",
+    "76ers": "Philadelphia 76ers",
+    "Sixers": "Philadelphia 76ers",
+    "Philadelphia": "Philadelphia 76ers",
+    "Raptors": "Toronto Raptors",
+    "Toronto": "Toronto Raptors",
+    "Hornets": "Charlotte Hornets",
+    "Charlotte": "Charlotte Hornets",
+    "Pacers": "Indiana Pacers",
+    "Indiana": "Indiana Pacers",
+    "Bulls": "Chicago Bulls",
+    "Chicago": "Chicago Bulls",
+    "Nets": "Brooklyn Nets",
+    "Brooklyn": "Brooklyn Nets",
+    "Wizards": "Washington Wizards",
+    "Washington": "Washington Wizards",
     // Western Conference
-    "1610612742": "Dallas Mavericks",
-    "1610612743": "Denver Nuggets",
-    "1610612744": "Golden State Warriors",
-    "1610612745": "Houston Rockets",
-    "1610612746": "Los Angeles Clippers",
-    "1610612747": "Los Angeles Lakers",
-    "1610612763": "Memphis Grizzlies",
-    "1610612750": "Minnesota Timberwolves",
-    "1610612740": "New Orleans Pelicans",
-    "1610612760": "Oklahoma City Thunder",
-    "1610612756": "Phoenix Suns",
-    "1610612757": "Portland Trail Blazers",
-    "1610612758": "Sacramento Kings",
-    "1610612759": "San Antonio Spurs",
-    "1610612762": "Utah Jazz"
+    "Thunder": "Oklahoma City Thunder",
+    "OKC": "Oklahoma City Thunder",
+    "Oklahoma City": "Oklahoma City Thunder",
+    "Rockets": "Houston Rockets",
+    "Houston": "Houston Rockets",
+    "Warriors": "Golden State Warriors",
+    "Golden State": "Golden State Warriors",
+    "GSW": "Golden State Warriors",
+    "Nuggets": "Denver Nuggets",
+    "Denver": "Denver Nuggets",
+    "Timberwolves": "Minnesota Timberwolves",
+    "Wolves": "Minnesota Timberwolves",
+    "Minnesota": "Minnesota Timberwolves",
+    "Mavericks": "Dallas Mavericks",
+    "Mavs": "Dallas Mavericks",
+    "Dallas": "Dallas Mavericks",
+    "Clippers": "Los Angeles Clippers",
+    "LA Clippers": "Los Angeles Clippers",
+    "LAC": "Los Angeles Clippers",
+    "Lakers": "Los Angeles Lakers",
+    "LA Lakers": "Los Angeles Lakers",
+    "LAL": "Los Angeles Lakers",
+    "Grizzlies": "Memphis Grizzlies",
+    "Memphis": "Memphis Grizzlies",
+    "Spurs": "San Antonio Spurs",
+    "San Antonio": "San Antonio Spurs",
+    "Suns": "Phoenix Suns",
+    "Phoenix": "Phoenix Suns",
+    "Pelicans": "New Orleans Pelicans",
+    "Pels": "New Orleans Pelicans",
+    "New Orleans": "New Orleans Pelicans",
+    "Kings": "Sacramento Kings",
+    "Sacramento": "Sacramento Kings",
+    "Jazz": "Utah Jazz",
+    "Utah": "Utah Jazz",
+    "Trail Blazers": "Portland Trail Blazers",
+    "Blazers": "Portland Trail Blazers",
+    "Portland": "Portland Trail Blazers"
 };
 
-// Conference assignments
+// All NBA teams
 const easternTeams = [
     "Atlanta Hawks", "Boston Celtics", "Brooklyn Nets", "Charlotte Hornets",
     "Chicago Bulls", "Cleveland Cavaliers", "Detroit Pistons", "Indiana Pacers",
@@ -52,20 +100,62 @@ const westernTeams = [
     "Sacramento Kings", "San Antonio Spurs", "Utah Jazz"
 ];
 
-// State
-let currentStandings = null;
-let playerScores = {};
-let teamRecords = {}; // Store W-L records
-
 // Initialize app on page load
 document.addEventListener('DOMContentLoaded', () => {
-    fetchNBAStandings();
-    // Refresh standings every 5 minutes
-    setInterval(fetchNBAStandings, 5 * 60 * 1000);
+    // Load saved standings from localStorage if available
+    const saved = localStorage.getItem('nbaStandings');
+    if (saved) {
+        currentStandings = JSON.parse(saved);
+        calculateScores();
+        updateUI();
+    } else {
+        // Try to fetch standings automatically
+        fetchStandings();
+    }
+    
+    // Set up event listeners
+    setupEventListeners();
 });
 
-// Fetch current NBA standings using NBA's CDN
-async function fetchNBAStandings() {
+// Set up all event listeners
+function setupEventListeners() {
+    // Fetch standings button
+    document.getElementById('fetchStandings').addEventListener('click', fetchStandings);
+    
+    // Manual update button
+    document.getElementById('manualUpdate').addEventListener('click', () => {
+        document.getElementById('updateModal').style.display = 'block';
+        prefillManualInput();
+    });
+    
+    // ESPN paste button
+    document.getElementById('loadFromUrl').addEventListener('click', () => {
+        document.getElementById('urlModal').style.display = 'block';
+    });
+    
+    // Save manual standings
+    document.getElementById('saveStandings').addEventListener('click', saveManualStandings);
+    
+    // Parse ESPN standings
+    document.getElementById('parseEspn').addEventListener('click', parseEspnStandings);
+    
+    // Close modals
+    document.querySelectorAll('.close').forEach(closeBtn => {
+        closeBtn.addEventListener('click', (e) => {
+            e.target.closest('.modal').style.display = 'none';
+        });
+    });
+    
+    // Close modal on outside click
+    window.addEventListener('click', (e) => {
+        if (e.target.classList.contains('modal')) {
+            e.target.style.display = 'none';
+        }
+    });
+}
+
+// Fetch standings using multiple methods
+async function fetchStandings() {
     const loader = document.getElementById('loader');
     const errorMessage = document.getElementById('errorMessage');
     
@@ -73,33 +163,23 @@ async function fetchNBAStandings() {
     errorMessage.classList.remove('active');
     
     try {
-        // First, fetch the current season standings
-        const standingsUrl = 'https://cdn.nba.com/static/json/staticData/NBA_Season_Standings.json';
-        const response = await fetch(standingsUrl);
-        
-        if (!response.ok) {
-            throw new Error('Failed to fetch NBA standings');
-        }
-        
-        const data = await response.json();
-        
-        // Parse the standings data
-        currentStandings = parseNBAStandings(data);
-        
-        // Calculate scores and update UI
-        calculateScores();
-        updateUI();
-        updateLastUpdated();
-        
+        // Try method 1: ESPN API via CORS proxy
+        await fetchFromESPN();
     } catch (error) {
-        console.error('Error fetching standings:', error);
+        console.error('ESPN fetch failed:', error);
         
-        // Try alternative method: calculate from individual team records
+        // Try method 2: Basketball Reference
         try {
-            await fetchStandingsFromTeamRecords();
-        } catch (fallbackError) {
-            console.error('Fallback also failed:', fallbackError);
-            errorMessage.textContent = 'Failed to load NBA standings. Please refresh the page.';
+            await fetchFromBasketballRef();
+        } catch (error2) {
+            console.error('Basketball Reference fetch failed:', error2);
+            
+            // Show error and suggest manual update
+            errorMessage.innerHTML = `
+                Failed to auto-fetch standings. Please use one of these options:<br>
+                1. Click "Manual Update" to enter standings manually<br>
+                2. Click "Paste ESPN Standings" and copy from ESPN.com
+            `;
             errorMessage.classList.add('active');
         }
     } finally {
@@ -107,64 +187,324 @@ async function fetchNBAStandings() {
     }
 }
 
-// Parse NBA standings from the official data
-function parseNBAStandings(data) {
+// Fetch from ESPN using CORS proxy
+async function fetchFromESPN() {
+    const proxyUrl = 'https://corsproxy.io/?';
+    const espnUrl = 'https://site.api.espn.com/apis/v2/sports/basketball/nba/standings';
+    
+    const response = await fetch(proxyUrl + encodeURIComponent(espnUrl));
+    if (!response.ok) throw new Error('Failed to fetch from ESPN');
+    
+    const data = await response.json();
+    
+    if (data && data.children) {
+        parseESPNData(data);
+        calculateScores();
+        updateUI();
+        saveToLocalStorage();
+    } else {
+        throw new Error('Invalid ESPN data format');
+    }
+}
+
+// Parse ESPN API data
+function parseESPNData(data) {
     const standings = {
         eastern: [],
         western: []
     };
     
-    // Check if we have the expected data structure
-    if (data && data.standings) {
-        // Process each conference
-        const conferences = data.standings;
+    data.children.forEach(conference => {
+        const isEastern = conference.name === 'Eastern Conference';
+        const conferenceKey = isEastern ? 'eastern' : 'western';
         
-        // Eastern Conference
-        if (conferences.Eastern) {
-            standings.eastern = processConferenceStandings(conferences.Eastern, easternTeams);
-        }
-        
-        // Western Conference
-        if (conferences.Western) {
-            standings.western = processConferenceStandings(conferences.Western, westernTeams);
-        }
-    }
-    
-    // If the primary structure doesn't work, try alternative parsing
-    if (standings.eastern.length === 0 || standings.western.length === 0) {
-        return parseAlternativeStructure(data);
-    }
-    
-    return standings;
-}
-
-// Process conference standings
-function processConferenceStandings(conferenceData, conferenceTeams) {
-    const teams = [];
-    
-    // Extract teams from the conference data
-    if (Array.isArray(conferenceData)) {
-        conferenceData.forEach(team => {
-            const teamName = nbaTeamIds[team.teamId] || team.teamName || team.team;
-            if (teamName && conferenceTeams.includes(teamName)) {
+        const teams = [];
+        conference.children.forEach(division => {
+            division.standings.entries.forEach(entry => {
+                const teamName = normalizeTeamName(entry.team.displayName);
                 teams.push({
                     name: teamName,
-                    wins: parseInt(team.wins || team.w || 0),
-                    losses: parseInt(team.losses || team.l || 0),
-                    winPct: parseFloat(team.winPct || team.winPercentage || 0),
-                    record: `${team.wins || team.w || 0}-${team.losses || team.l || 0}`
+                    wins: entry.stats.find(s => s.name === 'wins')?.value || 0,
+                    losses: entry.stats.find(s => s.name === 'losses')?.value || 0,
+                    winPct: entry.stats.find(s => s.name === 'winPercent')?.value || 0,
+                    record: entry.stats.find(s => s.name === 'record')?.displayValue || '0-0'
                 });
-            }
+            });
         });
+        
+        // Sort by win percentage
+        teams.sort((a, b) => {
+            if (b.winPct !== a.winPct) return b.winPct - a.winPct;
+            return b.wins - a.wins;
+        });
+        
+        // Assign rankings
+        teams.forEach((team, index) => {
+            standings[conferenceKey].push({
+                rank: index + 1,
+                ...team
+            });
+        });
+    });
+    
+    currentStandings = standings;
+}
+
+// Fetch from Basketball Reference
+async function fetchFromBasketballRef() {
+    // This is a fallback method - would need CORS proxy
+    throw new Error('Basketball Reference not available');
+}
+
+// Normalize team names
+function normalizeTeamName(name) {
+    // Check if it's already a full name
+    if (easternTeams.includes(name) || westernTeams.includes(name)) {
+        return name;
     }
     
-    // Sort by win percentage
+    // Check variations
+    if (teamVariations[name]) {
+        return teamVariations[name];
+    }
+    
+    // Try to find a match
+    const allTeams = [...easternTeams, ...westernTeams];
+    for (const team of allTeams) {
+        if (team.includes(name) || name.includes(team)) {
+            return team;
+        }
+    }
+    
+    return name;
+}
+
+// Prefill manual input with current standings
+function prefillManualInput() {
+    const easternInput = document.getElementById('easternInput');
+    const westernInput = document.getElementById('westernInput');
+    
+    if (currentStandings.eastern.length > 0) {
+        easternInput.value = currentStandings.eastern
+            .map(team => `${team.name}${team.record ? ` (${team.record})` : ''}`)
+            .join('\n');
+    }
+    
+    if (currentStandings.western.length > 0) {
+        westernInput.value = currentStandings.western
+            .map(team => `${team.name}${team.record ? ` (${team.record})` : ''}`)
+            .join('\n');
+    }
+}
+
+// Save manual standings
+function saveManualStandings() {
+    const easternInput = document.getElementById('easternInput').value.trim();
+    const westernInput = document.getElementById('westernInput').value.trim();
+    
+    if (!easternInput || !westernInput) {
+        alert('Please enter standings for both conferences');
+        return;
+    }
+    
+    // Parse Eastern Conference
+    const easternLines = easternInput.split('\n').filter(line => line.trim());
+    currentStandings.eastern = parseManualLines(easternLines);
+    
+    // Parse Western Conference
+    const westernLines = westernInput.split('\n').filter(line => line.trim());
+    currentStandings.western = parseManualLines(westernLines);
+    
+    // Update everything
+    calculateScores();
+    updateUI();
+    saveToLocalStorage();
+    
+    // Close modal
+    document.getElementById('updateModal').style.display = 'none';
+    
+    // Show success message
+    const errorMessage = document.getElementById('errorMessage');
+    errorMessage.innerHTML = 'Standings updated successfully!';
+    errorMessage.style.background = 'rgba(34, 197, 94, 0.2)';
+    errorMessage.style.borderColor = '#22c55e';
+    errorMessage.classList.add('active');
+    setTimeout(() => {
+        errorMessage.classList.remove('active');
+        errorMessage.style.background = '';
+        errorMessage.style.borderColor = '';
+    }, 3000);
+}
+
+// Parse manual input lines
+function parseManualLines(lines) {
+    const teams = [];
+    
+    lines.forEach((line, index) => {
+        // Remove leading numbers if present
+        let cleanLine = line.replace(/^\d+[\.\)\s]+/, '').trim();
+        
+        // Extract record if present (in parentheses)
+        let record = '0-0';
+        const recordMatch = cleanLine.match(/\((\d+-\d+)\)/);
+        if (recordMatch) {
+            record = recordMatch[1];
+            cleanLine = cleanLine.replace(/\(.*?\)/, '').trim();
+        }
+        
+        // Normalize team name
+        const teamName = normalizeTeamName(cleanLine);
+        
+        // Calculate win percentage
+        const [wins, losses] = record.split('-').map(n => parseInt(n) || 0);
+        const winPct = wins + losses > 0 ? wins / (wins + losses) : 0;
+        
+        teams.push({
+            rank: index + 1,
+            name: teamName,
+            wins: wins,
+            losses: losses,
+            winPct: winPct,
+            record: record
+        });
+    });
+    
+    return teams;
+}
+
+// Parse ESPN standings from paste
+function parseEspnStandings() {
+    const input = document.getElementById('espnInput').value;
+    
+    if (!input) {
+        alert('Please paste ESPN standings');
+        return;
+    }
+    
+    // Split into lines
+    const lines = input.split('\n').filter(line => line.trim());
+    
+    // Find conference markers
+    let easternStart = -1;
+    let westernStart = -1;
+    
+    lines.forEach((line, index) => {
+        const lower = line.toLowerCase();
+        if (lower.includes('eastern conference') || lower.includes('east')) {
+            easternStart = index;
+        }
+        if (lower.includes('western conference') || lower.includes('west')) {
+            westernStart = index;
+        }
+    });
+    
+    // Extract team data
+    const easternTeamLines = [];
+    const westernTeamLines = [];
+    
+    lines.forEach((line, index) => {
+        // Skip headers and empty lines
+        if (line.match(/^\s*$/) || line.includes('Conference') || line.includes('PCT') || line.includes('GB')) {
+            return;
+        }
+        
+        // Check if line contains a team
+        const hasTeam = [...easternTeams, ...westernTeams].some(team => {
+            const teamParts = team.split(' ');
+            return teamParts.some(part => line.includes(part));
+        });
+        
+        if (hasTeam) {
+            if (westernStart > -1 && index > westernStart) {
+                westernTeamLines.push(line);
+            } else if (easternStart > -1 && index > easternStart) {
+                easternTeamLines.push(line);
+            }
+        }
+    });
+    
+    // Parse the teams
+    currentStandings.eastern = parseEspnTeamLines(easternTeamLines, easternTeams);
+    currentStandings.western = parseEspnTeamLines(westernTeamLines, westernTeams);
+    
+    // Update everything
+    calculateScores();
+    updateUI();
+    saveToLocalStorage();
+    
+    // Close modal
+    document.getElementById('urlModal').style.display = 'none';
+    
+    // Show success message
+    const errorMessage = document.getElementById('errorMessage');
+    errorMessage.innerHTML = 'ESPN standings parsed successfully!';
+    errorMessage.style.background = 'rgba(34, 197, 94, 0.2)';
+    errorMessage.style.borderColor = '#22c55e';
+    errorMessage.classList.add('active');
+    setTimeout(() => {
+        errorMessage.classList.remove('active');
+        errorMessage.style.background = '';
+        errorMessage.style.borderColor = '';
+    }, 3000);
+}
+
+// Parse ESPN team lines
+function parseEspnTeamLines(lines, conferenceTeams) {
+    const teams = [];
+    
+    lines.forEach((line, index) => {
+        // Find which team this is
+        let teamName = '';
+        for (const team of conferenceTeams) {
+            if (line.includes(team) || 
+                line.includes(team.split(' ').pop()) || 
+                line.includes(team.split(' ')[0])) {
+                teamName = team;
+                break;
+            }
+        }
+        
+        if (!teamName) {
+            // Try variations
+            for (const [variation, fullName] of Object.entries(teamVariations)) {
+                if (line.includes(variation) && conferenceTeams.includes(fullName)) {
+                    teamName = fullName;
+                    break;
+                }
+            }
+        }
+        
+        if (teamName) {
+            // Extract record (look for pattern like 20-4 or 20 4)
+            const recordMatch = line.match(/(\d+)[\s-]+(\d+)/);
+            let wins = 0, losses = 0, record = '0-0';
+            
+            if (recordMatch) {
+                wins = parseInt(recordMatch[1]);
+                losses = parseInt(recordMatch[2]);
+                record = `${wins}-${losses}`;
+            }
+            
+            const winPct = wins + losses > 0 ? wins / (wins + losses) : 0;
+            
+            teams.push({
+                rank: index + 1,
+                name: teamName,
+                wins: wins,
+                losses: losses,
+                winPct: winPct,
+                record: record
+            });
+        }
+    });
+    
+    // Sort by win percentage to ensure correct ranking
     teams.sort((a, b) => {
         if (b.winPct !== a.winPct) return b.winPct - a.winPct;
         return b.wins - a.wins;
     });
     
-    // Assign ranks
+    // Reassign ranks
     teams.forEach((team, index) => {
         team.rank = index + 1;
     });
@@ -172,217 +512,9 @@ function processConferenceStandings(conferenceData, conferenceTeams) {
     return teams;
 }
 
-// Alternative parsing method for different data structures
-function parseAlternativeStructure(data) {
-    const standings = {
-        eastern: [],
-        western: []
-    };
-    
-    // Try to find teams in various possible data structures
-    const allTeams = [];
-    
-    // Look for teams in different possible locations
-    const possiblePaths = [
-        data.teams,
-        data.standings,
-        data.league?.standard?.teams,
-        data.resultSet?.rowSet
-    ];
-    
-    for (const path of possiblePaths) {
-        if (path && Array.isArray(path)) {
-            path.forEach(item => {
-                const teamName = extractTeamName(item);
-                if (teamName) {
-                    const wins = extractWins(item);
-                    const losses = extractLosses(item);
-                    allTeams.push({
-                        name: teamName,
-                        wins: wins,
-                        losses: losses,
-                        winPct: wins / (wins + losses) || 0,
-                        record: `${wins}-${losses}`
-                    });
-                }
-            });
-            if (allTeams.length > 0) break;
-        }
-    }
-    
-    // Separate into conferences
-    allTeams.forEach(team => {
-        if (easternTeams.includes(team.name)) {
-            standings.eastern.push(team);
-        } else if (westernTeams.includes(team.name)) {
-            standings.western.push(team);
-        }
-    });
-    
-    // Sort and rank each conference
-    ['eastern', 'western'].forEach(conf => {
-        standings[conf].sort((a, b) => {
-            if (b.winPct !== a.winPct) return b.winPct - a.winPct;
-            return b.wins - a.wins;
-        });
-        standings[conf].forEach((team, index) => {
-            team.rank = index + 1;
-        });
-    });
-    
-    return standings;
-}
-
-// Fallback: Calculate standings from team records
-async function fetchStandingsFromTeamRecords() {
-    console.log('Attempting fallback method: fetching team records...');
-    
-    // Use the NBA's scoreboard endpoint which includes team records
-    const today = new Date();
-    const dateStr = today.toISOString().split('T')[0].replace(/-/g, '');
-    const scoreboardUrl = `https://cdn.nba.com/static/json/liveData/scoreboard/todaysScoreboard_00.json`;
-    
-    const response = await fetch(scoreboardUrl);
-    if (!response.ok) {
-        throw new Error('Failed to fetch scoreboard data');
-    }
-    
-    const data = await response.json();
-    
-    // Extract team records from the scoreboard
-    const standings = {
-        eastern: [],
-        western: []
-    };
-    
-    // Process teams from the scoreboard
-    if (data && data.scoreboard && data.scoreboard.games) {
-        const teamsProcessed = new Set();
-        
-        data.scoreboard.games.forEach(game => {
-            // Process home team
-            if (game.homeTeam && !teamsProcessed.has(game.homeTeam.teamId)) {
-                processTeamFromGame(game.homeTeam, standings);
-                teamsProcessed.add(game.homeTeam.teamId);
-            }
-            
-            // Process away team
-            if (game.awayTeam && !teamsProcessed.has(game.awayTeam.teamId)) {
-                processTeamFromGame(game.awayTeam, standings);
-                teamsProcessed.add(game.awayTeam.teamId);
-            }
-        });
-    }
-    
-    // If we don't have enough teams, fetch from static endpoint
-    if (standings.eastern.length < 15 || standings.western.length < 15) {
-        await fetchStaticStandings(standings);
-    }
-    
-    // Sort and rank
-    ['eastern', 'western'].forEach(conf => {
-        standings[conf].sort((a, b) => {
-            const aWinPct = a.wins / (a.wins + a.losses) || 0;
-            const bWinPct = b.wins / (b.wins + b.losses) || 0;
-            if (bWinPct !== aWinPct) return bWinPct - aWinPct;
-            return b.wins - a.wins;
-        });
-        standings[conf].forEach((team, index) => {
-            team.rank = index + 1;
-            team.winPct = team.wins / (team.wins + team.losses) || 0;
-        });
-    });
-    
-    currentStandings = standings;
-}
-
-// Process team from game data
-function processTeamFromGame(teamData, standings) {
-    const teamName = nbaTeamIds[teamData.teamId] || teamData.teamName;
-    
-    if (teamName) {
-        const teamRecord = {
-            name: teamName,
-            wins: parseInt(teamData.wins || 0),
-            losses: parseInt(teamData.losses || 0),
-            record: `${teamData.wins || 0}-${teamData.losses || 0}`
-        };
-        
-        if (easternTeams.includes(teamName)) {
-            standings.eastern.push(teamRecord);
-        } else if (westernTeams.includes(teamName)) {
-            standings.western.push(teamRecord);
-        }
-    }
-}
-
-// Fetch static standings as final fallback
-async function fetchStaticStandings(standings) {
-    try {
-        // Try NBA's conference standings endpoint
-        const conferenceUrl = 'https://data.nba.com/data/10s/v2015/json/mobile_teams/nba/2024/league/00_full_schedule.json';
-        const response = await fetch(conferenceUrl);
-        
-        if (response.ok) {
-            const data = await response.json();
-            // Parse this data structure and add missing teams to standings
-            // This is a backup of backup, so we'll just ensure we have teams
-        }
-    } catch (error) {
-        console.error('Static standings fetch failed:', error);
-    }
-    
-    // If all else fails, ensure we have all teams with default values
-    ensureAllTeams(standings);
-}
-
-// Ensure all teams are present
-function ensureAllTeams(standings) {
-    easternTeams.forEach(teamName => {
-        if (!standings.eastern.find(t => t.name === teamName)) {
-            standings.eastern.push({
-                name: teamName,
-                wins: 0,
-                losses: 0,
-                winPct: 0,
-                record: '0-0'
-            });
-        }
-    });
-    
-    westernTeams.forEach(teamName => {
-        if (!standings.western.find(t => t.name === teamName)) {
-            standings.western.push({
-                name: teamName,
-                wins: 0,
-                losses: 0,
-                winPct: 0,
-                record: '0-0'
-            });
-        }
-    });
-}
-
-// Helper functions to extract data from various formats
-function extractTeamName(item) {
-    return nbaTeamIds[item.teamId] || 
-           item.teamName || 
-           item.team || 
-           item.name ||
-           (item[4] && nbaTeamIds[item[4]]);
-}
-
-function extractWins(item) {
-    return parseInt(item.wins || item.w || item[8] || 0);
-}
-
-function extractLosses(item) {
-    return parseInt(item.losses || item.l || item[9] || 0);
-}
-
 // Calculate accuracy scores for all players
 function calculateScores() {
-    if (!currentStandings) return;
+    if (!currentStandings.eastern.length || !currentStandings.western.length) return;
     
     playerScores = {};
     
@@ -463,20 +595,21 @@ function calculateDetailedAccuracy(predictions, actualStandings) {
     return details;
 }
 
-// Update the UI with current scores and standings
+// Update the UI
 function updateUI() {
-    if (!playerScores || Object.keys(playerScores).length === 0) return;
-    
-    // Update scoreboard
     updateScoreboard();
-    
-    // Update conference tabs
-    updateConferenceTabs();
+    updateStandingsTables();
+    updateLastUpdated();
 }
 
-// Update the main scoreboard
+// Update the scoreboard
 function updateScoreboard() {
     const scoreCardsContainer = document.getElementById('scoreCards');
+    
+    if (!playerScores || Object.keys(playerScores).length === 0) {
+        scoreCardsContainer.innerHTML = '<p style="text-align: center; color: #999;">No standings loaded yet</p>';
+        return;
+    }
     
     // Sort players by combined accuracy
     const sortedPlayers = Object.entries(playerScores)
@@ -514,114 +647,24 @@ function updateScoreboard() {
     });
 }
 
-// Update conference tabs content
-function updateConferenceTabs() {
-    updateCombinedTab();
-    updateConferenceTab('eastern');
-    updateConferenceTab('western');
+// Update standings tables
+function updateStandingsTables() {
+    updateConferenceStandings('eastern');
+    updateConferenceStandings('western');
 }
 
-// Update combined standings view
-function updateCombinedTab() {
-    const container = document.getElementById('combinedTab');
-    container.innerHTML = '<h3 style="text-align: center; margin-bottom: 20px;">Combined Conference Overview</h3>';
-    
-    // Create summary table
-    const table = document.createElement('div');
-    table.className = 'standings-table';
-    
-    // Header
-    table.innerHTML = `
-        <div class="table-header">
-            <div>Conference</div>
-            <div>Teams</div>
-            <div>Aaron</div>
-            <div>Austin</div>
-            <div>Paul</div>
-        </div>
-    `;
-    
-    // Eastern Conference Summary
-    const easternRow = document.createElement('div');
-    easternRow.className = 'team-row';
-    easternRow.innerHTML = `
-        <div style="font-weight: bold;">Eastern</div>
-        <div>15 Teams</div>
-        <div class="player-prediction ${getAccuracyClass(playerScores.aaron.eastern)}">
-            ${playerScores.aaron.eastern.toFixed(1)}%
-        </div>
-        <div class="player-prediction ${getAccuracyClass(playerScores.austin.eastern)}">
-            ${playerScores.austin.eastern.toFixed(1)}%
-        </div>
-        <div class="player-prediction ${getAccuracyClass(playerScores.paul.eastern)}">
-            ${playerScores.paul.eastern.toFixed(1)}%
-        </div>
-    `;
-    table.appendChild(easternRow);
-    
-    // Western Conference Summary
-    const westernRow = document.createElement('div');
-    westernRow.className = 'team-row';
-    westernRow.innerHTML = `
-        <div style="font-weight: bold;">Western</div>
-        <div>15 Teams</div>
-        <div class="player-prediction ${getAccuracyClass(playerScores.aaron.western)}">
-            ${playerScores.aaron.western.toFixed(1)}%
-        </div>
-        <div class="player-prediction ${getAccuracyClass(playerScores.austin.western)}">
-            ${playerScores.austin.western.toFixed(1)}%
-        </div>
-        <div class="player-prediction ${getAccuracyClass(playerScores.paul.western)}">
-            ${playerScores.paul.western.toFixed(1)}%
-        </div>
-    `;
-    table.appendChild(westernRow);
-    
-    // Combined Summary
-    const combinedRow = document.createElement('div');
-    combinedRow.className = 'team-row';
-    combinedRow.style.borderTop = '2px solid rgba(255,255,255,0.3)';
-    combinedRow.innerHTML = `
-        <div style="font-weight: bold;">TOTAL</div>
-        <div>30 Teams</div>
-        <div class="player-prediction ${getAccuracyClass(playerScores.aaron.combined)}" style="font-weight: bold;">
-            ${playerScores.aaron.combined.toFixed(1)}%
-        </div>
-        <div class="player-prediction ${getAccuracyClass(playerScores.austin.combined)}" style="font-weight: bold;">
-            ${playerScores.austin.combined.toFixed(1)}%
-        </div>
-        <div class="player-prediction ${getAccuracyClass(playerScores.paul.combined)}" style="font-weight: bold;">
-            ${playerScores.paul.combined.toFixed(1)}%
-        </div>
-    `;
-    table.appendChild(combinedRow);
-    
-    container.appendChild(table);
-}
-
-// Update individual conference tab
-function updateConferenceTab(conference) {
-    const container = document.getElementById(`${conference}Tab`);
+// Update a single conference standings table
+function updateConferenceStandings(conference) {
+    const container = document.getElementById(`${conference}Standings`);
     const standings = currentStandings[conference];
-    const conferenceName = conference === 'eastern' ? 'Eastern' : 'Western';
     
-    container.innerHTML = `<h3 style="text-align: center; margin-bottom: 20px;">${conferenceName} Conference Predictions</h3>`;
+    if (!standings || standings.length === 0) {
+        container.innerHTML = '<div style="padding: 20px; text-align: center; color: #999;">No standings loaded</div>';
+        return;
+    }
     
-    const table = document.createElement('div');
-    table.className = 'standings-table';
+    container.innerHTML = '';
     
-    // Header
-    table.innerHTML = `
-        <div class="table-header">
-            <div>Current</div>
-            <div>Team</div>
-            <div>Aaron</div>
-            <div>Austin</div>
-            <div>Paul</div>
-        </div>
-    `;
-    
-    // Add each team
     standings.forEach(team => {
         const row = document.createElement('div');
         row.className = 'team-row';
@@ -634,18 +677,18 @@ function updateConferenceTab(conference) {
             const distance = Math.abs(predictedRank - team.rank);
             const accuracy = ((14 - distance) / 14) * 100;
             teamPredictions[playerName] = {
-                rank: predictedRank,
-                accuracy: accuracy
+                rank: predictedRank || '-',
+                accuracy: predictedRank ? accuracy : 0
             };
         });
         
         row.innerHTML = `
             <div class="actual-rank">${team.rank}</div>
             <div class="team-info">
-                <img src="${teamLogos[team.name]}" alt="${team.name}" class="team-logo" onerror="this.style.display='none'">
+                <img src="${teamLogos[team.name] || ''}" alt="${team.name}" class="team-logo" onerror="this.style.display='none'">
                 <span class="team-name">${team.name}</span>
-                <span style="color: #999; font-size: 12px;">(${team.record})</span>
             </div>
+            <div class="team-record">${team.record}</div>
             <div class="player-prediction ${getAccuracyClass(teamPredictions.aaron.accuracy)}">
                 ${teamPredictions.aaron.rank}
             </div>
@@ -657,14 +700,13 @@ function updateConferenceTab(conference) {
             </div>
         `;
         
-        table.appendChild(row);
+        container.appendChild(row);
     });
-    
-    container.appendChild(table);
 }
 
 // Get accuracy class based on percentage
 function getAccuracyClass(accuracy) {
+    if (accuracy === 100) return 'accuracy-perfect';
     if (accuracy >= 90) return 'accuracy-excellent';
     if (accuracy >= 80) return 'accuracy-good';
     if (accuracy >= 70) return 'accuracy-fair';
@@ -679,21 +721,6 @@ function getAccuracyColorClass(accuracy) {
     if (accuracy >= 70) return 'accuracy-70';
     if (accuracy >= 60) return 'accuracy-60';
     return 'accuracy-50';
-}
-
-// Tab switching functionality
-function showTab(tabName) {
-    // Update active tab button
-    document.querySelectorAll('.tab-button').forEach(btn => {
-        btn.classList.remove('active');
-    });
-    event.target.classList.add('active');
-    
-    // Show/hide content
-    document.querySelectorAll('.tab-content').forEach(content => {
-        content.style.display = 'none';
-    });
-    document.getElementById(`${tabName}Tab`).style.display = 'block';
 }
 
 // Update last updated timestamp
@@ -712,5 +739,8 @@ function updateLastUpdated() {
     element.textContent = `Last updated: ${dateString} at ${timeString}`;
 }
 
-// Make showTab function globally available
-window.showTab = showTab;
+// Save to localStorage
+function saveToLocalStorage() {
+    localStorage.setItem('nbaStandings', JSON.stringify(currentStandings));
+    localStorage.setItem('nbaStandingsDate', new Date().toISOString());
+}
